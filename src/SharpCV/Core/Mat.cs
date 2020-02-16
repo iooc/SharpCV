@@ -120,16 +120,37 @@ namespace SharpCV
             _handle = handle;
         }
 
+        public unsafe Mat(NDArray nd)
+        {
+            switch (nd.ndim)
+            {
+                case 2:
+                    cv2_native_api.core_Mat_new8(nd.shape[0], nd.shape[1], FromType(nd.dtype), new IntPtr(nd.Unsafe.Address), new IntPtr(0), out _handle);
+                    break;
+                default:
+                    throw new NotImplementedException("Not supported");
+            }
+        }
+
         public unsafe NDArray GetData()
         {
             // we pass donothing as it keeps reference to src preventing its disposal by GC
             switch (MatType)
             {
+                case MatType.CV_32SC2:
+                    {
+                        cv2_native_api.core_Mat_data(_handle, out int* dataPtr);
+                        var block = new UnmanagedMemoryBlock<int>(dataPtr, shape.Size, () => DoNothing(_handle));
+                        var storage = new UnmanagedStorage(new ArraySlice<int>(block), shape);
+                        dtype = NPTypeCode.Int32;
+                        return new NDArray(storage);
+                    }
                 case MatType.CV_32FC1:
                     {
                         cv2_native_api.core_Mat_data(_handle, out float* dataPtr);
                         var block = new UnmanagedMemoryBlock<float>(dataPtr, shape.Size, () => DoNothing(_handle));
                         var storage = new UnmanagedStorage(new ArraySlice<float>(block), shape);
+                        dtype = NPTypeCode.Float;
                         return new NDArray(storage);
                     }
                 case MatType.CV_8UC1:
@@ -138,6 +159,7 @@ namespace SharpCV
                         cv2_native_api.core_Mat_data(_handle, out byte* dataPtr);
                         var block = new UnmanagedMemoryBlock<byte>(dataPtr, size, () => DoNothing(_handle));
                         var storage = new UnmanagedStorage(new ArraySlice<byte>(block), shape);
+                        dtype = NPTypeCode.Byte;
                         return new NDArray(storage);
                     }
                 default:
@@ -211,5 +233,21 @@ namespace SharpCV
 
         public static implicit operator NDArray(Mat mat)
             => mat.data;
+
+        public override string ToString()
+        {
+            return $"{shape.ToString()} {MatType}";
+        }
+
+        public MatType FromType(Type type)
+        {
+            switch (Type.GetTypeCode(type))
+            {
+                case TypeCode.Single:
+                    return MatType.CV_32FC1;
+                default:
+                    return MatType.CV_8UC1;
+            }
+        }
     }
 }
